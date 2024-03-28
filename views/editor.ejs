@@ -1,0 +1,282 @@
+<%- include('partials/header') %>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
+  <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/theme-monokai.css" id="theme-styles"> -->
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      align-items: center;
+      background-color: #f2f2f2;
+    }
+
+    #join-container {
+      text-align: center;
+      margin-top: 100px;
+      background-color: #fff;
+      box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      padding: 20px;
+      width: 300px;
+    }
+
+    #room-input,
+    #username-input,
+    button {
+      margin: 10px 0;
+      padding: 8px;
+      width: calc(100% - 20px);
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    button {
+      background-color: #3498db;
+      color: #fff;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #2980b9;
+    }
+
+    #editor-container {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      margin-top: 80px;
+      width: calc(100% - 40px);
+    }
+
+    #participants-list,
+    #code-editor,
+    #chat-container {
+      padding: 20px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      margin: 10px;
+      border-radius: 8px;
+      width: calc(33.33% - 20px);
+    }
+
+    #participants-list {
+      flex: 0 0 auto;
+      width: 200px;
+      height: 650px;
+    }
+
+    #code-editor,
+    #chat-container {
+      flex: 1 1 auto;
+      width: 200px;
+      height: 650px;
+    }
+
+    #editor-window {
+      width: 1100px;
+      height: 600px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    #chat-messages {
+      overflow-y: auto;
+      max-height: 200px;
+    }
+
+    #message-input {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: calc(100% - 20px);
+      box-sizing: border-box;
+    }
+
+    #send-button {
+      margin-top: 10px;
+      padding: 10px;
+      border: none;
+      background-color: #3498db;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      width: calc(100% - 20px);
+      box-sizing: border-box;
+    }
+
+    .chat-input{
+      position:fixed;
+      padding-bottom: 0px;
+    }
+
+
+    #send-button:hover {
+      background-color: #2980b9;
+    }
+  </style>
+  <title>Collaborative Code Editor</title>
+</head>
+
+<body>
+  <div id="join-container">
+    <input type="text" id="room-input" placeholder="Enter room code">
+    <br>
+    <input type="text" id="username-input" placeholder="Enter your username">
+    <br>
+    <button onclick="joinRoom()">Join Room</button>
+  </div>
+  <div id="editor-container">
+    <div id="participants-list"></div>
+    <div>
+      <select id="language-select">
+        <option value="javascript">JavaScript</option>
+        <option value="python">Python</option>
+        <option value="java">Java</option>
+      </select>
+      <select id="theme-select">
+        <option value="monokai">Monokai</option>
+        <option value="github">GitHub</option>
+        <option value="twilight">Twilight</option>
+      </select>
+      <div id="editor-window"></div>
+    </div>
+    <div id="chat-container">
+      <div id="chat-messages"></div>
+      <div class="chat-input">
+        <input type="text" id="message-input" placeholder="Type your message...">
+        <button id="send-button" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.2/socket.io.js"></script>
+  <script>
+    const socket = io();
+let selectedLanguage = 'javascript';
+let selectedTheme = 'monokai';
+
+const editor = ace.edit("editor-window");
+editor.setTheme("ace/theme/" + selectedTheme);
+editor.getSession().setMode("ace/mode/" + selectedLanguage);
+
+function handleLanguageChange(event) {
+  selectedLanguage = event.target.value;
+  editor.getSession().setMode("ace/mode/" + selectedLanguage);
+}
+
+function handleThemeChange(event) {
+  selectedTheme = event.target.value;
+  editor.setTheme("ace/theme/" + selectedTheme);
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  document.getElementById('language-select').addEventListener('change', handleLanguageChange);
+  document.getElementById('theme-select').addEventListener('change', handleThemeChange);
+});
+
+let roomCode;
+let username;
+
+function joinRoom() {
+  roomCode = document.getElementById('room-input').value.trim();
+  username = document.getElementById('username-input').value.trim();
+
+  if (roomCode && username) {
+    document.getElementById('join-container').style.display = 'none';
+    document.getElementById('editor-container').style.display = 'flex';
+
+    socket.emit('joinRoom', roomCode, username);
+  } else {
+    alert('Please enter a valid room code and username.');
+  }
+}
+
+socket.on('userJoined', (username) => {
+  displayMessage(username, 'joined the room!');
+});
+
+socket.on('receiveMessage', (username, message) => {
+  displayMessage(username, message);
+});
+
+socket.on('updateCode', (newCode) => {
+  editor.setValue(newCode);
+});
+
+socket.on('updateParticipants', (participants) => {
+  const participantsList = document.getElementById('participants-list');
+  participantsList.innerHTML = '<strong>Participants:</strong>';
+  participants.forEach((participant) => {
+    const participantElement = document.createElement('div');
+    participantElement.innerText = participant;
+    participantsList.appendChild(participantElement);
+  });
+});
+
+function sendMessage() {
+  const messageInput = document.getElementById('message-input');
+  const message = messageInput.value.trim();
+
+  if (message) {
+    socket.emit('sendMessage', roomCode, username, message);
+    messageInput.value = '';
+    displayMessage('You', message);
+  }
+}
+
+function displayMessage(username, message) {
+  const chatMessages = document.getElementById('chat-messages');
+  const messageElement = document.createElement('div');
+  messageElement.innerHTML = `<strong>${username}:</strong> ${message}`;
+  chatMessages.appendChild(messageElement);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function handleCodeChange(newCode) {
+  const currentPosition = editor.selection.getCursor();
+
+  editor.setValue(newCode);
+  editor.clearSelection();
+
+  editor.gotoLine(currentPosition.row, currentPosition.column);
+  editor.moveCursorLineEnd();
+}
+
+function sendCodeUpdate(code) {
+  if (roomCode) {
+    const currentPosition = editor.selection.getCursor();
+
+    socket.emit('codeUpdateOut', { roomCode, code, currentPosition });
+  } else {
+    console.error('Room code is not defined.');
+  }
+}
+
+editor.session.on('change', function () {
+  const code = editor.getValue();
+  sendCodeUpdate(code);
+});
+
+
+
+  </script>
+</body>
+</html>
